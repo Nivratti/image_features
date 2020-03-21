@@ -32,8 +32,29 @@ class ImageLoader():
         return input_tensor
 
 
+class PTLImageLoader():
+    def __init__(self, pil_images, model, img_size=224, augment=False):
+        additional_args = {}
+        if augment:
+            additional_args = {
+                'random_crop': True, 'random_hflip': False,
+                'random_vflip': False
+            }
+        self.tf_img = utils.TransformImage(
+            model, scale=img_size / 256, **additional_args)
+        self.pil_images = pil_images
+
+    def __len__(self):
+        return len(self.pil_images)
+
+    def __getitem__(self, idx):
+        input_img = self.pil_images[idx]
+        input_tensor = self.tf_img(input_img)
+        return input_tensor
+
+
 def image_features(
-        img_paths, model_name='resnet50', use_gpu=torch.cuda.is_available(),
+        img_paths=[], pil_images=[], model_name='resnet50', use_gpu=torch.cuda.is_available(),
         batch_size=32, num_workers=4, progress=False, augment=False):
     """
     Extract deep learning image features from images.
@@ -61,7 +82,14 @@ def image_features(
         raise ValueError(f'img_paths should be a list of image paths.')
 
     model = get_model(model_name).to(device)
-    dataset = ImageLoader(img_paths, model, augment=augment)
+
+    if img_paths:
+        dataset = ImageLoader(img_paths, model, augment=augment)
+    elif pil_images:
+        dataset = PTLImageLoader(pil_images, model, augment=augment)
+    else:
+        pass
+
     dataloader = torch.utils.data.DataLoader(
         dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
     with torch.no_grad():
@@ -85,6 +113,20 @@ def image_features(
     return output_features
 
 if __name__ == '__main__':
-    img_paths = ['../tests/data/example_image.jpg',
-                 '../tests/data/example_image_2.JPG']
-    image_features(img_paths, batch_size=4, progress=True)
+    # test passing image paths
+    img_paths = ['1.jpg',]
+    img_features = image_features(img_paths, batch_size=4, progress=True)
+
+    print(len(img_features))
+    print(img_features.shape)
+
+    # check by passing numpy array
+    import numpy as np
+    from PIL import Image
+    pil_image = Image.open('1.jpg')
+    img_features2 = image_features(pil_images=[pil_image], batch_size=4, progress=True)
+
+    print(len(img_features))
+    print(img_features.shape)
+
+    print(img_features==img_features2)
